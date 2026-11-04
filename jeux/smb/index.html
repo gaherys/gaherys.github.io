@@ -6,7 +6,7 @@
 <title>Super Mario Bros. · La Salle de Jeux</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../commun/style.css">
+<link rel="stylesheet" href="../../commun/style.css?v=3">
 <style>
   .entete { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
   .entete a { font-size: 14px; }
@@ -71,6 +71,7 @@
         <label>Volume <input type="range" id="volume" min="0" max="100"></label>
         <label class="case"><input type="checkbox" id="large"> Écran large 16:9</label>
         <button class="secondaire" id="plein-ecran" type="button" disabled>Plein écran</button>
+        <p class="doux" id="vitesse">Version 3</p>
       </div>
       <h2>Touches</h2>
       <dl>
@@ -87,8 +88,9 @@
 <script src="../../vendor/jsnes.min.js"></script>
 <script src="../../vendor/mqtt.min.js"></script>
 <script type="module">
-  import { PERSOS, lireRom, recolorer, passerEnPal, viesInfinies, lireEtat, cameraX, couleursDe, dessinerSprites, MARIO_DEBOUT } from "./jeu.js";
-  import { rejoindre, salon } from "../../commun/salle.js";
+  // ?v= : GitHub Pages laisse les fichiers 10 min en cache ; changer le numéro force le rechargement après une mise à jour
+  import { PERSOS, lireRom, recolorer, passerEnPal, viesInfinies, lireEtat, cameraX, couleursDe, dessinerSprites, MARIO_DEBOUT } from "./jeu.js?v=3";
+  import { rejoindre, salon } from "../../commun/salle.js?v=3";
 
   const $ = (id) => document.getElementById(id);
   const PALETTE = new jsnes.NES().ppu.palTable.curTable;
@@ -198,6 +200,14 @@
     }
   }
 
+  // Compteur de vitesse visible : pour vérifier d'un coup d'œil que le jeu ne s'emballe pas
+  const VERSION = 3;
+  let images = 0;
+  setInterval(() => {
+    if (nes) $("vitesse").textContent = `Version ${VERSION} · ${images} images/s (normal : ${rom.pal ? 50 : 60})`;
+    images = 0;
+  }, 1000);
+
   setInterval(() => {
     const maintenant = Date.now();
     for (const [id, p] of potes) {
@@ -292,8 +302,9 @@
     // Le minuteur de jsnes 2.1, une fois en avance (images ajoutées quand le son manque), calcule une image
     // à chaque rafraîchissement de l'écran : le jeu tournait à 144 images/s sur un écran 144 Hz.
     // Remplacé par une horloge qui ne calcule que les images dues.
-    minuteur.onAnimationFrame = (temps) => {
+    minuteur.onAnimationFrame = () => {
       minuteur.requestAnimationFrame();
+      const temps = performance.now(); // même horloge que la garde du son ci-dessous, sur tous les navigateurs
       if (!minuteur.lastFrameTime || temps - minuteur.lastFrameTime > 250) minuteur.lastFrameTime = temps; // départ, onglet en pause
       let dues = 0;
       while (temps - minuteur.lastFrameTime >= minuteur.interval && dues++ < 4) minuteur.generateFrame();
@@ -313,6 +324,7 @@
     let n = 0;
     minuteur.onGenerateFrame = () => {
       calculerImage();
+      images++;
       viesInfinies(ram);
       if (++n % 2 === 0) reseau.envoyer({ perso, ...lireEtat(ram) });
     };
