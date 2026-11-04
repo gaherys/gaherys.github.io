@@ -6,7 +6,7 @@
 <title>Super Mario Bros. · La Salle de Jeux</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../commun/style.css?v=3">
+<link rel="stylesheet" href="../../commun/style.css?v=4">
 <style>
   .entete { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
   .entete a { font-size: 14px; }
@@ -71,7 +71,7 @@
         <label>Volume <input type="range" id="volume" min="0" max="100"></label>
         <label class="case"><input type="checkbox" id="large"> Écran large 16:9</label>
         <button class="secondaire" id="plein-ecran" type="button" disabled>Plein écran</button>
-        <p class="doux" id="vitesse">Version 3</p>
+        <p class="doux" id="vitesse">Version 4</p>
       </div>
       <h2>Touches</h2>
       <dl>
@@ -89,8 +89,8 @@
 <script src="../../vendor/mqtt.min.js"></script>
 <script type="module">
   // ?v= : GitHub Pages laisse les fichiers 10 min en cache ; changer le numéro force le rechargement après une mise à jour
-  import { PERSOS, lireRom, recolorer, passerEnPal, viesInfinies, lireEtat, cameraX, couleursDe, dessinerSprites, MARIO_DEBOUT } from "./jeu.js?v=3";
-  import { rejoindre, salon } from "../../commun/salle.js?v=3";
+  import { PERSOS, lireRom, recolorer, tempsEnSecondes, passerEnPal, viesInfinies, lireEtat, cameraX, couleursDe, dessinerSprites, MARIO_DEBOUT } from "./jeu.js?v=4";
+  import { rejoindre, salon } from "../../commun/salle.js?v=4";
 
   const $ = (id) => document.getElementById(id);
   const PALETTE = new jsnes.NES().ppu.palTable.curTable;
@@ -201,7 +201,7 @@
   }
 
   // Compteur de vitesse visible : pour vérifier d'un coup d'œil que le jeu ne s'emballe pas
-  const VERSION = 3;
+  const VERSION = 4;
   let images = 0;
   setInterval(() => {
     if (nes) $("vitesse").textContent = `Version ${VERSION} · ${images} images/s (normal : ${rom.pal ? 50 : 60})`;
@@ -285,7 +285,7 @@
     });
     nes = navigateur.nes;
     navigateur.keyboard.keys = TOUCHES;
-    nes.loadROM(recolorer(rom, perso));
+    nes.loadROM(tempsEnSecondes(recolorer(rom, perso), rom.pal));
     navigateur.start();
     // jsnes 2.1 fixe la fréquence du son (44,1 kHz) avant d'ouvrir la carte son : on la recale,
     // sinon il manque du son en permanence et jsnes accélère le jeu pour combler.

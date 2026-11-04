@@ -3,7 +3,7 @@
 import { createRequire } from "node:module";
 import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
-import { lireRom, recolorer, passerEnPal, viesInfinies, lireEtat, PERSOS } from "../jeux/smb/jeu.js";
+import { lireRom, recolorer, tempsEnSecondes, passerEnPal, viesInfinies, lireEtat, PERSOS } from "../jeux/smb/jeu.js";
 
 const jsnes = createRequire(import.meta.url)("../vendor/jsnes.min.js");
 const chemin = process.argv[2];
@@ -13,7 +13,7 @@ console.log("PAL :", rom.pal);
 
 let echantillons = 0;
 const nes = new jsnes.NES({ onAudioSample: () => echantillons++, sampleRate: 48000 });
-nes.loadROM(recolorer(rom, "wario"));
+nes.loadROM(tempsEnSecondes(recolorer(rom, "wario"), rom.pal));
 if (rom.pal) passerEnPal(nes);
 const ram = nes.cpu.mem;
 const B = jsnes.Controller;
@@ -36,6 +36,15 @@ console.log("OperMode/tâche vus pendant l'intro :", [...taches].join(" "));
 assert.equal(ram[0x770], 1, "en partie");
 assert.equal(ram[0x772], 3, "boucle de jeu active");
 console.log("motifs sprites en", nes.ppu.f_spPatternTable ? "$1000" : "$0000");
+
+// TIME : 1 unité par seconde réelle
+const temps = () => ram[0x7f8] * 100 + ram[0x7f9] * 10 + ram[0x7fa];
+let t0 = temps(), k = 0;
+while (temps() === t0) { images(1); k++; }
+t0 = temps(); k = 0;
+while (temps() === t0) { images(1); k++; }
+console.log("images par unité de TIME :", k);
+assert.equal(k, rom.pal ? 50 : 60, "le TIME suit les secondes réelles");
 
 // Courir à droite pendant 3 s
 const x0 = ram[0x6d] * 256 + ram[0x86];

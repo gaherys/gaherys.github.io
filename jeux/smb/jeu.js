@@ -36,6 +36,17 @@ export function recolorer(rom, perso) {
   return copie;
 }
 
+// Sur NES, le TIME perd 1 unité toutes les 0,4 s (20 images PAL, 24 NTSC), réglé par `lda #n / sta $0787`.
+// Ici 1 unité = 1 seconde réelle : n = images par seconde. La vitesse du jeu ne change pas.
+export function tempsEnSecondes(octets, pal) {
+  for (let i = 0; i < octets.length - 4; i++) {
+    if (octets[i] === 0xa9 && octets[i + 2] === 0x8d && octets[i + 3] === 0x87 && octets[i + 4] === 0x07) {
+      octets[i + 1] = pal ? 50 : 60;
+    }
+  }
+  return octets;
+}
+
 // jsnes n'émule que la NES américaine. La NES européenne a 312 lignes par image (50 Hz)
 // et un processeur un peu plus lent (3,2 points d'écran par cycle au lieu de 3).
 export function passerEnPal(nes) {
