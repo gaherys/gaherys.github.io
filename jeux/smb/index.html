@@ -1,0 +1,262 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Super Mario Bros. · La Salle de Jeux</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@400;500&display=swap">
+<link rel="stylesheet" href="../../commun/style.css">
+<style>
+  .entete { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
+  .entete a { font-size: 14px; }
+  .grille { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 20px; align-items: start; }
+  @media (max-width: 820px) { .grille { grid-template-columns: minmax(0, 1fr); } }
+  .ecran { width: 100%; aspect-ratio: 256 / 240; background: #000; border: 2px solid var(--bord); border-radius: 4px; }
+  .ecran canvas { display: block; }
+  #reglages { display: grid; gap: 12px; justify-items: start; }
+  #reglages h2 { margin: 8px 0 0; }
+  .persos { display: flex; flex-wrap: wrap; gap: 10px; }
+  .persos button {
+    display: grid; justify-items: center; gap: 6px; width: 92px; padding: 10px 6px 8px;
+    background: var(--fond); color: var(--texte); border: 2px solid var(--bord); box-shadow: none; font-size: 9px;
+  }
+  .persos button[aria-pressed="true"] { border-color: var(--or); background: #2e2752; }
+  .persos canvas { width: 32px; height: 64px; image-rendering: pixelated; }
+  #potes { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 6px; font-size: 14px; }
+  #potes li::before { content: "● "; color: var(--vert); }
+  #potes li.vide::before { content: ""; }
+  dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
+  dt { color: var(--or); }
+  dd { margin: 0; color: var(--doux); }
+  #erreur { color: var(--cerise); }
+</style>
+</head>
+<body>
+<div class="page">
+  <header class="entete">
+    <a href="../../">← Salle de jeux</a>
+    <h1>Super Mario Bros.</h1>
+    <span class="doux" id="statut">Connexion au salon…</span>
+  </header>
+
+  <div class="grille">
+    <div>
+      <div id="ecran" class="ecran" hidden></div>
+      <section id="reglages" class="panneau">
+        <h2>1. Ta cartouche</h2>
+        <p class="doux">Choisis ton fichier Super Mario Bros. (.nes). Il reste sur ton ordi ; le site s'en souvient pour la prochaine fois.</p>
+        <button class="secondaire" id="choisir" type="button">Choisir le fichier .nes</button>
+        <input type="file" id="fichier" accept=".nes" hidden>
+        <p id="rom-info" class="doux" aria-live="polite"></p>
+        <h2>2. Ton perso</h2>
+        <div class="persos" id="persos" role="group" aria-label="Choix du perso"></div>
+        <button id="jouer" type="button" disabled>Jouer</button>
+        <p id="erreur" role="alert"></p>
+      </section>
+    </div>
+
+    <aside class="panneau">
+      <h2>Dans le salon</h2>
+      <ul id="potes"></ul>
+      <h2>Touches</h2>
+      <dl>
+        <dt>Flèches</dt><dd>Bouger</dd>
+        <dt>X / Espace</dt><dd>Sauter</dd>
+        <dt>W / Z / Maj</dt><dd>Courir, boule de feu</dd>
+        <dt>Entrée</dt><dd>Start (pause)</dd>
+        <dt>Manette</dt><dd>Branche-la et appuie sur un bouton</dd>
+      </dl>
+    </aside>
+  </div>
+</div>
+
+<script src="../../vendor/jsnes.min.js"></script>
+<script src="../../vendor/mqtt.min.js"></script>
+<script type="module">
+  import { PERSOS, lireRom, recolorer, passerEnPal, viesInfinies, lireEtat, cameraX, couleursDe, dessinerSprites, MARIO_DEBOUT } from "./jeu.js";
+  import { rejoindre, salon } from "../../commun/salle.js";
+
+  const $ = (id) => document.getElementById(id);
+  const PALETTE = new jsnes.NES().ppu.palTable.curTable;
+  const C = jsnes.Controller;
+  const TOUCHES = {
+    37: [1, C.BUTTON_LEFT], 38: [1, C.BUTTON_UP], 39: [1, C.BUTTON_RIGHT], 40: [1, C.BUTTON_DOWN],
+    88: [1, C.BUTTON_A], 32: [1, C.BUTTON_A],
+    87: [1, C.BUTTON_B], 90: [1, C.BUTTON_B], 16: [1, C.BUTTON_B],
+    13: [1, C.BUTTON_START], 17: [1, C.BUTTON_SELECT],
+  };
+
+  const memoire = {
+    lire(cle) { try { return localStorage.getItem(cle); } catch { return null; } },
+    ecrire(cle, v) { try { localStorage.setItem(cle, v); } catch {} },
+  };
+
+  let rom = null;
+  let perso = PERSOS[memoire.lire("smb-perso")] ? memoire.lire("smb-perso") : "mario";
+  let nes = null;
+
+  // --- La ROM, gardée dans le navigateur ---
+  function prendreRom(octets, nom) {
+    const r = lireRom(octets, nom);
+    if (!r) {
+      $("rom-info").textContent = "Ce fichier n'est pas Super Mario Bros. (NES). Essaie un autre .nes.";
+      return false;
+    }
+    rom = r;
+    $("rom-info").textContent = `✓ ${nom || "Super Mario Bros."} · version ${r.pal ? "européenne (50 Hz)" : "américaine (60 Hz)"}`;
+    $("choisir").textContent = "Changer de fichier";
+    $("jouer").disabled = false;
+    afficherPersos();
+    return true;
+  }
+  $("choisir").addEventListener("click", () => $("fichier").click());
+  $("fichier").addEventListener("change", async () => {
+    const f = $("fichier").files[0];
+    if (!f) return;
+    const octets = new Uint8Array(await f.arrayBuffer());
+    if (prendreRom(octets, f.name)) {
+      memoire.ecrire("smb-rom", btoa(String.fromCharCode(...octets)));
+      memoire.ecrire("smb-rom-nom", f.name);
+    }
+  });
+  try {
+    const b64 = memoire.lire("smb-rom");
+    if (b64) prendreRom(Uint8Array.from(atob(b64), (c) => c.charCodeAt(0)), memoire.lire("smb-rom-nom") || "");
+  } catch {
+    // ROM enregistrée abîmée : on redemandera le fichier
+  }
+
+  // --- Choix du perso ---
+  function afficherPersos() {
+    $("persos").replaceChildren(...Object.entries(PERSOS).map(([cle, p]) => {
+      const bouton = document.createElement("button");
+      bouton.type = "button";
+      bouton.setAttribute("aria-pressed", cle === perso);
+      const toile = document.createElement("canvas");
+      toile.width = 16;
+      toile.height = 32;
+      if (rom) dessinerSprites(toile.getContext("2d"), rom.chr, couleursDe({ perso: cle }, PALETTE), MARIO_DEBOUT, 0);
+      bouton.append(toile, p.nom);
+      bouton.addEventListener("click", () => {
+        perso = cle;
+        memoire.ecrire("smb-perso", cle);
+        afficherPersos();
+      });
+      return bouton;
+    }));
+  }
+  afficherPersos();
+
+  // --- En ligne ---
+  const potes = new Map();
+  const reseau = rejoindre("smb", (m) => potes.set(m.id, { ...m, vu: Date.now() }));
+
+  function dessinerPotes(ctx, ram) {
+    const ici = lireEtat(ram).zone;
+    if (!ici || !rom) return;
+    const camX = cameraX(ram);
+    ctx.font = "8px monospace";
+    ctx.textAlign = "center";
+    ctx.lineWidth = 2;
+    for (const p of potes.values()) {
+      if (p.zone !== ici || !Array.isArray(p.spr) || !p.spr.length || Date.now() - p.vu > 3000) continue;
+      dessinerSprites(ctx, rom.chr, couleursDe(p, PALETTE), p.spr, camX);
+      const xs = p.spr.map((s) => (Array.isArray(s) ? s[0] | 0 : 0));
+      const haut = Math.min(...p.spr.map((s) => (Array.isArray(s) ? s[1] | 0 : 0)));
+      const x = (Math.min(...xs) + Math.max(...xs)) / 2 + 4 - camX;
+      ctx.strokeStyle = "#000";
+      ctx.fillStyle = "#fff";
+      ctx.strokeText(String(p.pseudo).slice(0, 16), x, haut - 3);
+      ctx.fillText(String(p.pseudo).slice(0, 16), x, haut - 3);
+    }
+  }
+
+  setInterval(() => {
+    const maintenant = Date.now();
+    for (const [id, p] of potes) if (maintenant - p.vu > 5000) potes.delete(id);
+    if (!nes) reseau.envoyer({ perso, zone: null });
+    $("statut").textContent = reseau.connecte() ? `Salon « ${salon()} »` : "Connexion au salon…";
+    const lignes = [...potes.values()].map((p) => {
+      const li = document.createElement("li");
+      const ou = typeof p.zone === "string" ? "Monde " + p.zone.split("-").slice(0, 2).join("-") : "dans les menus";
+      li.textContent = `${String(p.pseudo).slice(0, 16)} · ${PERSOS[p.perso]?.nom ?? "?"} · ${ou}`;
+      return li;
+    });
+    if (!lignes.length) {
+      const li = document.createElement("li");
+      li.className = "vide doux";
+      li.textContent = "Personne d'autre pour l'instant. Envoie le lien du salon à ton pote depuis l'accueil.";
+      lignes.push(li);
+    }
+    $("potes").replaceChildren(...lignes);
+  }, 500);
+
+  // --- Manette standard (Xbox / PlayStation) ---
+  function suivreManette() {
+    let avant = {};
+    (function lire() {
+      const pad = [...(navigator.getGamepads?.() ?? [])].find(Boolean);
+      if (pad) {
+        const b = (i) => !!pad.buttons[i]?.pressed;
+        const etat = {
+          [C.BUTTON_A]: b(0) || b(1), [C.BUTTON_B]: b(2) || b(3),
+          [C.BUTTON_SELECT]: b(8), [C.BUTTON_START]: b(9),
+          [C.BUTTON_UP]: b(12) || pad.axes[1] < -0.5, [C.BUTTON_DOWN]: b(13) || pad.axes[1] > 0.5,
+          [C.BUTTON_LEFT]: b(14) || pad.axes[0] < -0.5, [C.BUTTON_RIGHT]: b(15) || pad.axes[0] > 0.5,
+        };
+        for (const k in etat) if (etat[k] !== !!avant[k]) (etat[k] ? nes.buttonDown : nes.buttonUp)(1, +k);
+        avant = etat;
+      }
+      requestAnimationFrame(lire);
+    })();
+  }
+
+  // --- Lancer la partie ---
+  $("jouer").addEventListener("click", () => {
+    $("reglages").hidden = true;
+    $("ecran").hidden = false;
+    const navigateur = new jsnes.Browser({
+      container: $("ecran"),
+      onError: (e) => {
+        $("reglages").hidden = false;
+        $("erreur").textContent = "L'émulateur a planté : " + e.message + ". Recharge la page pour relancer.";
+      },
+    });
+    nes = navigateur.nes;
+    navigateur.keyboard.keys = TOUCHES;
+    nes.loadROM(recolorer(rom, perso));
+    navigateur.start();
+    // jsnes 2.1 fixe la fréquence du son (44,1 kHz) avant d'ouvrir la carte son : on la recale,
+    // sinon il manque du son en permanence et jsnes accélère le jeu pour combler.
+    const frequence = navigateur._speakers.audioCtx?.sampleRate;
+    if (frequence) {
+      nes.opts.sampleRate = nes.papu.sampleRate = frequence;
+      nes.papu.sampleTimerMax = Math.floor((1024 * 1789772.5) / frequence);
+    }
+    const minuteur = navigateur._frameTimer;
+    if (rom.pal) {
+      passerEnPal(nes);
+      minuteur.interval = 1000 / 50.007;
+    }
+    const ram = nes.cpu.mem;
+    const ctx = navigateur._screen.context;
+    const calculerImage = minuteur.onGenerateFrame;
+    const afficherImage = minuteur.onWriteFrame;
+    let n = 0;
+    minuteur.onGenerateFrame = () => {
+      calculerImage();
+      viesInfinies(ram);
+      if (++n % 2 === 0) reseau.envoyer({ perso, ...lireEtat(ram) });
+    };
+    minuteur.onWriteFrame = () => {
+      afficherImage();
+      dessinerPotes(ctx, ram);
+    };
+    addEventListener("resize", () => navigateur.fitInParent());
+    suivreManette();
+    window.nesDebug = { nes, ram, potes }; // pour tester depuis la console
+  });
+</script>
+</body>
+</html>

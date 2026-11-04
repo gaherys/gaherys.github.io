@@ -1,0 +1,46 @@
+/* Salle d'arcade de nuit : moquette indigo, néons cerise et or de pièce. Un seul thème, sombre, voulu. */
+:root {
+  --fond: #15122b;
+  --panneau: #221d3f;
+  --bord: #3a3266;
+  --texte: #f3eedf;
+  --doux: #a9a2c9;
+  --cerise: #ff4f5e;
+  --or: #ffc93c;
+  --vert: #5ee08a;
+  --pixel: "Press Start 2P", ui-monospace, monospace;
+  --corps: "Rubik", system-ui, sans-serif;
+  color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  background: var(--fond);
+  color: var(--texte);
+  font: 16px/1.5 var(--corps);
+  padding: 24px max(16px, env(safe-area-inset-right, 0px)) 48px max(16px, env(safe-area-inset-left, 0px));
+}
+.page { max-width: 1100px; margin: 0 auto; display: grid; gap: 24px; }
+h1, h2, .pixel { font-family: var(--pixel); font-weight: 400; letter-spacing: 0.02em; text-wrap: balance; }
+h1 { font-size: clamp(18px, 4vw, 28px); line-height: 1.4; margin: 0; color: var(--or); }
+h2 { font-size: 12px; margin: 0 0 12px; color: var(--doux); text-transform: uppercase; }
+a { color: var(--or); }
+.panneau { background: var(--panneau); border: 2px solid var(--bord); border-radius: 4px; padding: 16px; }
+label { display: grid; gap: 4px; font-size: 14px; color: var(--doux); }
+input[type="text"] {
+  font: inherit; color: var(--texte); background: var(--fond);
+  border: 2px solid var(--bord); border-radius: 4px; padding: 8px 10px; width: 100%;
+}
+button, .bouton {
+  font-family: var(--pixel); font-size: 11px; line-height: 1.6; cursor: pointer; text-decoration: none;
+  color: var(--fond); background: var(--or); border: 0; border-radius: 4px;
+  padding: 10px 14px; box-shadow: 0 4px 0 #b8861a; display: inline-block; text-align: center;
+}
+button:active, .bouton:active { transform: translateY(2px); box-shadow: 0 2px 0 #b8861a; }
+button.secondaire { background: var(--bord); color: var(--texte); box-shadow: 0 4px 0 #241f45; }
+button:disabled { opacity: 0.5; cursor: default; }
+:focus-visible { outline: 3px solid var(--cerise); outline-offset: 2px; }
+.doux { color: var(--doux); font-size: 14px; }
+.ligne { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+.ligne > label { flex: 1 1 180px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }

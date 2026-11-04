@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>La Salle de Jeux</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@400;500&display=swap">
+<link rel="stylesheet" href="commun/style.css">
+<style>
+  header { display: grid; gap: 8px; padding-block: 8px 4px; }
+  .jeux { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .carte { display: grid; gap: 12px; align-content: start; }
+  .carte h3 { font-family: var(--pixel); font-size: 13px; line-height: 1.6; margin: 0; }
+  .etiquettes { display: flex; flex-wrap: wrap; gap: 6px; }
+  .etiquettes span { font-size: 12px; border: 1px solid var(--bord); border-radius: 99px; padding: 2px 10px; color: var(--doux); }
+  .bientot { border-style: dashed; color: var(--doux); }
+  #copie { min-height: 1.5em; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <h1>La Salle de Jeux</h1>
+    <p class="doux">Nos jeux à jouer ensemble, chacun chez soi. Même salon = on se voit.</p>
+  </header>
+
+  <section class="panneau" aria-labelledby="t-profil">
+    <h2 id="t-profil">Ton profil</h2>
+    <div class="ligne">
+      <label>Ton pseudo <input type="text" id="pseudo" maxlength="16" autocomplete="nickname"></label>
+      <label>Code du salon (le même que ton pote) <input type="text" id="salon" maxlength="30"></label>
+      <button id="inviter" type="button">Copier le lien pour ton pote</button>
+    </div>
+    <p class="doux" id="copie" aria-live="polite"></p>
+  </section>
+
+  <section aria-labelledby="t-jeux">
+    <h2 id="t-jeux">Les jeux</h2>
+    <div class="jeux">
+      <article class="panneau carte">
+        <h3>Super Mario Bros.</h3>
+        <p class="doux">Chacun joue sa partie et voit le perso de l'autre courir dans le même niveau.</p>
+        <div class="etiquettes"><span>En ligne</span><span>2 joueurs et +</span><span>Vies infinies</span><span>Mario · Luigi · Wario · Waluigi</span></div>
+        <a class="bouton" href="jeux/smb/">Jouer</a>
+      </article>
+      <article class="panneau carte bientot">
+        <h3>Prochain jeu</h3>
+        <p>La place est libre pour le prochain jeu qu'on fera ensemble.</p>
+      </article>
+    </div>
+  </section>
+</div>
+<script type="module">
+  import { pseudo, salon, changerPseudo, changerSalon, lienInvitation } from "./commun/salle.js";
+  const champPseudo = document.getElementById("pseudo");
+  const champSalon = document.getElementById("salon");
+  champPseudo.value = pseudo();
+  champSalon.value = salon();
+  champPseudo.addEventListener("change", () => (champPseudo.value = changerPseudo(champPseudo.value)));
+  champSalon.addEventListener("change", () => (champSalon.value = changerSalon(champSalon.value)));
+  document.getElementById("inviter").addEventListener("click", async () => {
+    const lien = lienInvitation();
+    const info = document.getElementById("copie");
+    try {
+      await navigator.clipboard.writeText(lien);
+      info.textContent = "Lien copié ! Envoie-le à ton pote : " + lien;
+    } catch {
+      info.textContent = "Envoie ce lien à ton pote : " + lien;
+    }
+  });
+</script>
+</body>
+</html>
