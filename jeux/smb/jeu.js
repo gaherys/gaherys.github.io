@@ -20,6 +20,9 @@ export const PERSOS = {
 // Couleurs NES : [casquette + salopette, peau, cheveux + chemise + chaussures]
 const COULEURS_FEU = [0x37, 0x27, 0x16];
 const TABLE_COULEURS = [0x22, 0x16, 0x27, 0x18, 0x22, 0x30, 0x27, 0x19]; // Mario puis Luigi, dans la ROM
+// Début de chaque monde dans la table des 36 zones de la ROM (qui suit juste après) ;
+// les mondes 1, 2, 4 et 7 ont 5 zones : la petite scène du tuyau avant le niveau 2.
+const DEBUT_MONDES = [0x00, 0x05, 0x0a, 0x0e, 0x13, 0x17, 0x1b, 0x20];
 
 function chercher(octets, motif) {
   for (let i = 0; i <= octets.length - motif.length; i++) {
@@ -36,7 +39,28 @@ export function lireRom(donnees, nomFichier = "") {
   if (table < 0) return null;
   const nes2 = (octets[7] & 0x0c) === 0x08;
   const pal = nes2 ? (octets[12] & 3) === 1 : (octets[9] & 1) === 1 || /europe|\(e\)/i.test(nomFichier);
-  return { octets, table, pal, chr: octets.subarray(16 + octets[4] * 16384) };
+  const z = chercher(octets, [...DEBUT_MONDES, 0x25, 0x29]); // null si absente (ROM modifiée) : pas de téléportation
+  const zones = z < 0 ? null : octets.subarray(z + DEBUT_MONDES.length, z + DEBUT_MONDES.length + 36);
+  return { octets, table, pal, chr: octets.subarray(16 + octets[4] * 16384), zones };
+}
+
+// Envoie le joueur au début d'un niveau (0 = 1-1 … 31 = 8-4) : le jeu recharge la zone
+// et affiche « WORLD x-y » comme d'habitude. À faire seulement quand le joueur est en contrôle.
+export function teleporter(ram, rom, niveau) {
+  const monde = niveau >> 2;
+  const n = niveau & 3;
+  const debut = DEBUT_MONDES[monde];
+  const intro = (DEBUT_MONDES[monde + 1] ?? 36) - debut === 5;
+  const zone = n + (intro && n >= 2 ? 1 : 0); // x-2 = la scène du tuyau, qui mène au niveau
+  ram[0x75f] = monde;
+  ram[0x75c] = n;
+  ram[0x760] = zone;
+  ram[0x750] = rom.zones[debut + zone]; // pointeur de zone
+  ram[0x75b] = 0; // départ au début du niveau, pas au milieu
+  ram[0x752] = 0; // entrée normale
+  ram[0x757] = 1; // TIME du niveau remis à neuf
+  ram[0x769] = 0; // afficher l'écran « WORLD x-y »
+  ram[0x772] = 0; // tâche 0 : charger la zone
 }
 
 // Copie de la ROM où la tenue de Mario prend les couleurs du perso choisi.

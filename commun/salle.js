@@ -63,6 +63,7 @@ export function rejoindre(jeu, recevoir) {
     if (m && typeof m === "object" && typeof m.id === "string" && m.id !== moi) recevoir(m);
   });
   return {
+    id: moi,
     // fiable : le relais accuse réception et le message est renvoyé si besoin (pour les messages rares et importants)
     envoyer(m, fiable = false) {
       if (client.connected) client.publish(sujet, JSON.stringify({ ...m, id: moi, pseudo: pseudoActuel }), { qos: fiable ? 1 : 0 });
