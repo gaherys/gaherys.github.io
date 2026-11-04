@@ -6,6 +6,16 @@ export const PERSOS = {
   luigi: { nom: "Luigi", couleurs: [0x30, 0x27, 0x19] },
   wario: { nom: "Wario", couleurs: [0x28, 0x27, 0x14] },
   waluigi: { nom: "Waluigi", couleurs: [0x13, 0x27, 0x03] },
+  peach: { nom: "Peach", couleurs: [0x25, 0x37, 0x28] },
+  schtroumpf: { nom: "Schtroumpf", couleurs: [0x30, 0x21, 0x30] },
+  hulk: { nom: "Hulk", couleurs: [0x13, 0x2a, 0x1a] },
+  zombie: { nom: "Zombie", couleurs: [0x00, 0x3a, 0x0f] },
+  dore: { nom: "Mario en or", couleurs: [0x28, 0x38, 0x17] },
+  gameboy: { nom: "Game Boy", couleurs: [0x0a, 0x3a, 0x1a] },
+  negatif: { nom: "Négatif", couleurs: [0x2c, 0x12, 0x31] },
+  soleil: { nom: "Coup de soleil", couleurs: [0x16, 0x26, 0x06] },
+  fantome: { nom: "Fantôme", couleurs: [0x30, 0x30, 0x10] },
+  ninja: { nom: "Ninja", couleurs: [0x0f, 0x27, 0x0f] }, // tout noir : quasi invisible sous terre, c'est le but
 };
 // Couleurs NES : [casquette + salopette, peau, cheveux + chemise + chaussures]
 const COULEURS_FEU = [0x37, 0x27, 0x16];

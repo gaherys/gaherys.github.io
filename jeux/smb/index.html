@@ -6,7 +6,7 @@
 <title>Super Mario Bros. · La Salle de Jeux</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../commun/style.css?v=6">
+<link rel="stylesheet" href="../../commun/style.css?v=7">
 <style>
   .entete { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
   .entete a { font-size: 14px; }
@@ -77,7 +77,7 @@
         <label>Volume <input type="range" id="volume" min="0" max="100"></label>
         <label class="case"><input type="checkbox" id="large"> Écran large 16:9</label>
         <button class="secondaire" id="plein-ecran" type="button" disabled>Plein écran</button>
-        <p class="doux" id="vitesse">Version 6</p>
+        <p class="doux" id="vitesse">Version 7</p>
       </div>
       <h2>Touches</h2>
       <dl>
@@ -103,8 +103,8 @@
 <script src="../../vendor/mqtt.min.js"></script>
 <script type="module">
   // ?v= : GitHub Pages laisse les fichiers 10 min en cache ; changer le numéro force le rechargement après une mise à jour
-  import { PERSOS, lireRom, recolorer, tempsEnSecondes, passerEnPal, viesInfinies, lireEtat, cameraX, couleursDe, dessinerSprites, MARIO_DEBOUT } from "./jeu.js?v=6";
-  import { rejoindre, salon, pseudo } from "../../commun/salle.js?v=6";
+  import { PERSOS, lireRom, recolorer, tempsEnSecondes, passerEnPal, viesInfinies, lireEtat, cameraX, couleursDe, dessinerSprites, MARIO_DEBOUT } from "./jeu.js?v=7";
+  import { rejoindre, salon, pseudo } from "../../commun/salle.js?v=7";
 
   const $ = (id) => document.getElementById(id);
   const PALETTE = new jsnes.NES().ppu.palTable.curTable;
@@ -319,6 +319,12 @@
     const sec = String(s % 60).padStart(2, "0");
     return h ? `${h}:${String(min).padStart(2, "0")}:${sec}` : `${min}:${sec}`;
   };
+  // couleur de la piste : la tenue du perso, ou sa couleur la plus claire si la tenue est trop sombre (Ninja, Game Boy)
+  const clarte = (rgb) => rgb.match(/\d+/g).reduce((s, v) => s + Number(v), 0);
+  function couleurPiste(perso) {
+    const couleurs = couleursDe({ perso }, PALETTE);
+    return clarte(couleurs[0]) > 200 ? couleurs[0] : couleurs.reduce((a, b) => (clarte(b) > clarte(a) ? b : a));
+  }
   function ligneJoueur(j) {
     const li = document.createElement("li");
     const nom = document.createElement("strong");
@@ -331,7 +337,7 @@
     piste.className = "piste";
     piste.setAttribute("role", "img");
     piste.setAttribute("aria-label", `Progression : ${niveau}`);
-    piste.style.setProperty("--c", couleursDe({ perso: j.perso }, PALETTE)[0]);
+    piste.style.setProperty("--c", couleurPiste(j.perso));
     for (let i = 0; i < 32; i++) {
       const c = piste.appendChild(document.createElement("i"));
       if (j.fini !== null || (j.niveau !== null && i < j.niveau)) c.className = "fait";
@@ -346,7 +352,7 @@
   }
 
   // Compteur de vitesse visible : pour vérifier d'un coup d'œil que le jeu ne s'emballe pas
-  const VERSION = 6;
+  const VERSION = 7;
   let images = 0;
   setInterval(() => {
     if (nes) $("vitesse").textContent = `Version ${VERSION} · ${images} images/s (normal : ${rom.pal ? 50 : 60})`;
