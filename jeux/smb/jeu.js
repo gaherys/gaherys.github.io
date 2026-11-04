@@ -99,10 +99,11 @@ export function couleursDe(etat, palette) {
 }
 
 // Dessine des sprites 8×8 de la ROM. `spr` vient du réseau : chaque valeur est bornée.
-export function dessinerSprites(ctx, chr, couleurs, spr, decalageX) {
+export function dessinerSprites(ctx, chr, couleurs, spr, decalageX, decalageY = 0) {
   for (const s of Array.isArray(spr) ? spr.slice(0, 8) : []) {
-    const [wx, y, tuile, attr] = Array.isArray(s) ? s.map((v) => v | 0) : [];
+    const [wx, wy, tuile, attr] = Array.isArray(s) ? s.map((v) => v | 0) : [];
     const x = wx - decalageX;
+    const y = wy + decalageY;
     if (x < -8 || x > 256) continue;
     const base = (tuile & 0xff) * 16;
     for (let py = 0; py < 8; py++) {
