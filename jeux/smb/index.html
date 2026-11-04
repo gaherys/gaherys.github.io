@@ -6,7 +6,7 @@
 <title>Super Mario Bros. · La Salle de Jeux</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Press+Start+2P&family=Rubik:wght@400;500&display=swap">
-<link rel="stylesheet" href="../../commun/style.css?v=4">
+<link rel="stylesheet" href="../../commun/style.css?v=6">
 <style>
   .entete { display: flex; flex-wrap: wrap; gap: 8px 20px; align-items: baseline; }
   .entete a { font-size: 14px; }
@@ -30,9 +30,16 @@
   }
   .persos button[aria-pressed="true"] { border-color: var(--or); background: #2e2752; }
   .persos canvas { width: 32px; height: 64px; image-rendering: pixelated; }
-  #potes { list-style: none; margin: 0 0 16px; padding: 0; display: grid; gap: 6px; font-size: 14px; }
-  #potes li::before { content: "● "; color: var(--vert); }
-  #potes li.vide::before { content: ""; }
+  .colonne { display: grid; gap: 20px; align-content: start; }
+  #joueurs { list-style: none; margin: 0 0 12px; padding: 0; display: grid; gap: 14px; font-size: 14px; }
+  /* 32 cases = les 32 niveaux, regroupées par monde */
+  .piste { display: grid; grid-template-columns: repeat(32, 1fr); gap: 2px; margin: 6px 0 4px; }
+  .piste i { height: 8px; background: var(--bord); border-radius: 1px; }
+  .piste i:nth-child(4n):not(:last-child) { margin-right: 3px; }
+  .piste .fait { background: var(--c); }
+  .piste .ici { background: var(--c); box-shadow: 0 0 0 2px var(--or); }
+  .fini { color: var(--or); font-weight: 500; }
+  #info-course:empty { display: none; }
   dl { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; margin: 0; font-size: 14px; }
   dt { color: var(--or); }
   dd { margin: 0; color: var(--doux); }
@@ -63,15 +70,14 @@
       </section>
     </div>
 
+    <div class="colonne">
     <aside class="panneau">
-      <h2>Dans le salon</h2>
-      <ul id="potes"></ul>
       <h2>Réglages</h2>
       <div class="options">
         <label>Volume <input type="range" id="volume" min="0" max="100"></label>
         <label class="case"><input type="checkbox" id="large"> Écran large 16:9</label>
         <button class="secondaire" id="plein-ecran" type="button" disabled>Plein écran</button>
-        <p class="doux" id="vitesse">Version 4</p>
+        <p class="doux" id="vitesse">Version 6</p>
       </div>
       <h2>Touches</h2>
       <dl>
@@ -82,6 +88,14 @@
         <dt>Manette</dt><dd>Branche-la et appuie sur un bouton</dd>
       </dl>
     </aside>
+    <section class="panneau" aria-labelledby="t-course">
+      <h2 id="t-course">La course</h2>
+      <ul id="joueurs"></ul>
+      <p class="doux" id="seul">Personne d'autre pour l'instant. Envoie le lien du salon à ton pote depuis l'accueil.</p>
+      <p class="doux" id="info-course" aria-live="polite"></p>
+      <button class="secondaire" id="reset" type="button">Nouvelle course (tout le monde)</button>
+    </section>
+    </div>
   </div>
 </div>
 
@@ -89,8 +103,8 @@
 <script src="../../vendor/mqtt.min.js"></script>
 <script type="module">
   // ?v= : GitHub Pages laisse les fichiers 10 min en cache ; changer le numéro force le rechargement après une mise à jour
-  import { PERSOS, lireRom, recolorer, tempsEnSecondes, passerEnPal, viesInfinies, lireEtat, cameraX, couleursDe, dessinerSprites, MARIO_DEBOUT } from "./jeu.js?v=4";
-  import { rejoindre, salon } from "../../commun/salle.js?v=4";
+  import { PERSOS, lireRom, recolorer, tempsEnSecondes, passerEnPal, viesInfinies, lireEtat, cameraX, couleursDe, dessinerSprites, MARIO_DEBOUT } from "./jeu.js?v=6";
+  import { rejoindre, salon, pseudo } from "../../commun/salle.js?v=6";
 
   const $ = (id) => document.getElementById(id);
   const PALETTE = new jsnes.NES().ppu.palTable.curTable;
@@ -163,45 +177,176 @@
   }
   afficherPersos();
 
-  // --- En ligne ---
-  const potes = new Map();
-  const lissage = new Map(); // id → position où le fantôme est affiché
-  const reseau = rejoindre("smb", (m) => potes.set(m.id, { ...m, vu: Date.now() }));
+  let ram = null; // mémoire de la NES (change à chaque rechargement de la ROM)
 
-  function dessinerPotes(ctx, ram) {
+  // --- La course : chrono et morts, du Start sur l'écran titre jusqu'à la hache du château 8-4 ---
+  const nouvelleCourse = () => ({ enCours: false, images: 0, morts: 0, fini: null, vies: 0, modeAvant: 0 });
+  let course = nouvelleCourse();
+  const ips = () => (rom?.pal ? 50.007 : 60.098);
+  function suivreCourse() {
+    const mode = ram[0x770]; // 0 écran titre, 1 en jeu, 2 victoire (hache touchée)
+    // départ = Start sur l'écran titre (0 → 1) ; au démarrage de la console, la mémoire vaut n'importe quoi
+    if (mode === 1 && course.modeAvant === 0 && course.fini === null) Object.assign(course, { enCours: true, images: 0, morts: 0 });
+    if (course.enCours && course.fini === null) {
+      course.images++;
+      if (mode === 1 && course.modeAvant === 1 && ram[0x75a] === course.vies - 1) course.morts++;
+      if (mode === 2 && ram[0x75f] === 7) course.fini = course.images / ips(); // hache du monde 8 = fin du jeu
+    }
+    course.modeAvant = mode;
+    viesInfinies(ram);
+    course.vies = ram[0x75a];
+  }
+  function infosCourse() {
+    const enJeu = nes && (ram[0x770] === 1 || ram[0x770] === 2);
+    return {
+      niveau: enJeu ? Math.min(31, ram[0x75f] * 4 + ram[0x75c]) : null,
+      morts: course.morts,
+      chrono: course.enCours ? Math.round(course.images / ips()) : null,
+      fini: course.fini === null ? null : Math.round(course.fini),
+    };
+  }
+
+  // --- En ligne : le perso des potes ---
+  // Interpolation à tampon (« snapshot interpolation ») : chaque pote est affiché avec un petit retard
+  // constant, ajusté à la gigue du réseau, et on glisse entre ses images reçues. Le pote envoie
+  // toutes ses images (7 par message) : animation complète, sans à-coups.
+  const potes = new Map(); // id → infos du pote + tampon de ses images
+  // heure de l'image affichée : l'horloge du jeu (pile 20 ms par image) une fois lancé, pour un pas régulier
+  let horloge = () => performance.now();
+  const entier = (v, max) => (Number.isInteger(v) && v >= 0 && v <= max ? v : null);
+  function recevoirMessage(m) {
+    if (m.reset === true) return recommencer(String(m.pseudo).slice(0, 16));
+    const p = potes.get(m.id) ?? { tampon: [], gigue: 0 };
+    Object.assign(p, {
+      pseudo: String(m.pseudo).slice(0, 16),
+      perso: m.perso,
+      vu: Date.now(),
+      niveau: entier(m.niveau, 31),
+      morts: entier(m.morts, 1e5) ?? 0,
+      chrono: entier(m.chrono, 1e7),
+      fini: entier(m.fini, 1e7),
+    });
+    if (Array.isArray(m.etats)) recevoirEtats(p, m.etats.slice(0, 12));
+    potes.set(m.id, p);
+  }
+  const reseau = rejoindre("smb", recevoirMessage);
+
+  function recevoirEtats(p, etats) {
+    for (const e of etats) {
+      const dernier = p.tampon.at(-1);
+      if (e && Number.isFinite(e.t) && (!dernier || e.t > dernier.t)) p.tampon.push(e);
+    }
+    if (p.tampon.length > 100) p.tampon.splice(0, p.tampon.length - 100);
+    const dernier = p.tampon.at(-1);
+    if (!dernier) return;
+    const ecart = performance.now() - dernier.t; // notre horloge moins l'horloge de jeu du pote
+    if (p.decalage === undefined || ecart < p.decalage || ecart - p.decalage > 1000) p.decalage = ecart; // 1er message, ou pote revenu d'une pause
+    else p.decalage += 0.05; // suit lentement un réseau devenu plus lent
+    p.gigue = Math.max(ecart - p.decalage, p.gigue * 0.995);
+  }
+
+  function ancre(e) {
+    if (!Array.isArray(e?.spr) || !e.spr.length) return null;
+    const spr = e.spr.slice(0, 8);
+    const xs = spr.map((s) => (Array.isArray(s) ? s[0] | 0 : 0));
+    const ys = spr.map((s) => (Array.isArray(s) ? s[1] | 0 : 0));
+    return { x: Math.min(...xs), xMax: Math.max(...xs), y: Math.min(...ys) };
+  }
+
+  function etatAffiche(p) {
+    const tampon = p.tampon;
+    if (!tampon.length) return null;
+    // retard d'affichage : la gigue mesurée + de quoi tenir jusqu'au message suivant (~140 ms d'images par message)
+    // pour avoir toujours l'image suivante en réserve ; il varie en douceur
+    const voulu = Math.min(600, p.gigue + 180);
+    p.retard = (p.retard ?? voulu) + Math.max(-0.2, Math.min(2, voulu - (p.retard ?? voulu)));
+    const cible = horloge() - p.decalage - p.retard;
+    while (tampon.length > 2 && tampon[1].t <= cible) tampon.shift();
+    const [a, b] = tampon;
+    if (!b || cible <= a.t) return { etat: a, dx: 0, dy: 0 };
+    const f = Math.min(1, (cible - a.t) / (b.t - a.t));
+    const etat = f < 0.5 ? a : b;
+    const pa = ancre(a);
+    const pb = ancre(b);
+    const pe = ancre(etat);
+    // grand écart (mort, tuyau…) : pas de glissade, on se place directement
+    if (!pa || !pb || !pe || Math.abs(pb.x - pa.x) > 48 || Math.abs(pb.y - pa.y) > 48) return { etat, dx: 0, dy: 0 };
+    return { etat, dx: Math.round(pa.x + (pb.x - pa.x) * f - pe.x), dy: Math.round(pa.y + (pb.y - pa.y) * f - pe.y) };
+  }
+
+  function dessinerPotes(ctx) {
     const ici = lireEtat(ram).zone;
-    if (!ici || !rom) return;
+    if (!ici) return;
     const camX = cameraX(ram);
     ctx.font = "8px monospace";
     ctx.textAlign = "center";
     ctx.lineWidth = 2;
-    for (const [id, p] of potes) {
-      if (p.zone !== ici || !Array.isArray(p.spr) || !p.spr.length || Date.now() - p.vu > 3000) continue;
-      const xs = p.spr.map((s) => (Array.isArray(s) ? s[0] | 0 : 0));
-      const ys = p.spr.map((s) => (Array.isArray(s) ? s[1] | 0 : 0));
-      const ancreX = Math.min(...xs);
-      const ancreY = Math.min(...ys);
-      // Les positions arrivent ~25 fois/s, parfois par paquets : le fantôme glisse vers la dernière
-      // au lieu de sauter (sauf grand écart : mort, tuyau…, où il s'y place directement).
-      let l = lissage.get(id);
-      if (!l || Math.abs(ancreX - l.x) > 48 || Math.abs(ancreY - l.y) > 48) lissage.set(id, (l = { x: ancreX, y: ancreY }));
-      else {
-        l.x += (ancreX - l.x) * 0.4;
-        l.y += (ancreY - l.y) * 0.4;
-      }
-      const dx = Math.round(l.x - ancreX);
-      const dy = Math.round(l.y - ancreY);
-      dessinerSprites(ctx, rom.chr, couleursDe(p, PALETTE), p.spr, camX - dx, dy);
-      const x = (ancreX + Math.max(...xs)) / 2 + 4 - camX + dx;
-      ctx.strokeStyle = "#000";
+    ctx.strokeStyle = "#000";
+    for (const p of potes.values()) {
+      if (Date.now() - p.vu > 3000) continue;
+      const vue = etatAffiche(p);
+      const a = vue && vue.etat.zone === ici && ancre(vue.etat);
+      if (!a) continue;
+      dessinerSprites(ctx, rom.chr, couleursDe({ perso: p.perso, feu: vue.etat.feu }, PALETTE), vue.etat.spr, camX - vue.dx, vue.dy);
+      const x = (a.x + a.xMax) / 2 + 4 - camX + vue.dx;
       ctx.fillStyle = "#fff";
-      ctx.strokeText(String(p.pseudo).slice(0, 16), x, ancreY + dy - 3);
-      ctx.fillText(String(p.pseudo).slice(0, 16), x, ancreY + dy - 3);
+      ctx.strokeText(p.pseudo, x, a.y + vue.dy - 3);
+      ctx.fillText(p.pseudo, x, a.y + vue.dy - 3);
     }
   }
 
+  // --- Nouvelle course pour tout le salon ---
+  function chargerRom() {
+    nes.loadROM(tempsEnSecondes(recolorer(rom, perso), rom.pal));
+    if (rom.pal) passerEnPal(nes);
+    ram = nes.cpu.mem;
+  }
+  function recommencer(par) {
+    course = nouvelleCourse();
+    if (nes) chargerRom();
+    $("info-course").textContent = `Nouvelle course lancée par ${par}.`;
+  }
+  $("reset").addEventListener("click", () => {
+    if (!confirm("Relancer une nouvelle course pour tout le salon ? Tout le monde repart de l'écran titre, chronos et morts à zéro.")) return;
+    reseau.envoyer({ reset: true }, true);
+    recommencer("toi");
+  });
+
+  // --- Panneau de la course ---
+  const duree = (s) => {
+    const h = Math.floor(s / 3600);
+    const min = Math.floor(s / 60) % 60;
+    const sec = String(s % 60).padStart(2, "0");
+    return h ? `${h}:${String(min).padStart(2, "0")}:${sec}` : `${min}:${sec}`;
+  };
+  function ligneJoueur(j) {
+    const li = document.createElement("li");
+    const nom = document.createElement("strong");
+    nom.textContent = j.pseudo + (j.moi ? " (toi)" : "");
+    const ou = document.createElement("span");
+    ou.className = "doux";
+    const niveau = j.niveau === null ? "écran titre" : `monde ${(j.niveau >> 2) + 1}-${(j.niveau & 3) + 1}`;
+    ou.textContent = ` · ${PERSOS[j.perso]?.nom ?? "?"} · ${j.fini !== null ? "terminé !" : niveau}`;
+    const piste = document.createElement("div");
+    piste.className = "piste";
+    piste.setAttribute("role", "img");
+    piste.setAttribute("aria-label", `Progression : ${niveau}`);
+    piste.style.setProperty("--c", couleursDe({ perso: j.perso }, PALETTE)[0]);
+    for (let i = 0; i < 32; i++) {
+      const c = piste.appendChild(document.createElement("i"));
+      if (j.fini !== null || (j.niveau !== null && i < j.niveau)) c.className = "fait";
+      else if (i === j.niveau) c.className = "ici";
+    }
+    const stats = document.createElement("div");
+    const morts = `${j.morts} mort${j.morts > 1 ? "s" : ""}`;
+    stats.className = j.fini !== null ? "fini" : "doux";
+    stats.textContent = j.fini !== null ? `Terminé en ${duree(j.fini)} · ${morts}` : j.chrono !== null ? `${duree(j.chrono)} · ${morts}` : "";
+    li.append(nom, ou, piste, stats);
+    return li;
+  }
+
   // Compteur de vitesse visible : pour vérifier d'un coup d'œil que le jeu ne s'emballe pas
-  const VERSION = 4;
+  const VERSION = 6;
   let images = 0;
   setInterval(() => {
     if (nes) $("vitesse").textContent = `Version ${VERSION} · ${images} images/s (normal : ${rom.pal ? 50 : 60})`;
@@ -209,28 +354,12 @@
   }, 1000);
 
   setInterval(() => {
-    const maintenant = Date.now();
-    for (const [id, p] of potes) {
-      if (maintenant - p.vu > 5000) {
-        potes.delete(id);
-        lissage.delete(id);
-      }
-    }
-    if (!nes) reseau.envoyer({ perso, zone: null });
+    for (const [id, p] of potes) if (Date.now() - p.vu > 5000) potes.delete(id);
+    if (!nes) reseau.envoyer({ perso, ...infosCourse() });
     $("statut").textContent = reseau.connecte() ? `Salon « ${salon()} »` : "Connexion au salon…";
-    const lignes = [...potes.values()].map((p) => {
-      const li = document.createElement("li");
-      const ou = typeof p.zone === "string" ? "Monde " + p.zone.split("-").slice(0, 2).join("-") : "dans les menus";
-      li.textContent = `${String(p.pseudo).slice(0, 16)} · ${PERSOS[p.perso]?.nom ?? "?"} · ${ou}`;
-      return li;
-    });
-    if (!lignes.length) {
-      const li = document.createElement("li");
-      li.className = "vide doux";
-      li.textContent = "Personne d'autre pour l'instant. Envoie le lien du salon à ton pote depuis l'accueil.";
-      lignes.push(li);
-    }
-    $("potes").replaceChildren(...lignes);
+    const joueurs = [{ pseudo: pseudo(), perso, moi: true, ...infosCourse() }, ...potes.values()];
+    $("joueurs").replaceChildren(...joueurs.map(ligneJoueur));
+    $("seul").hidden = potes.size > 0;
   }, 500);
 
   // --- Manette standard (Xbox / PlayStation) ---
@@ -285,20 +414,14 @@
     });
     nes = navigateur.nes;
     navigateur.keyboard.keys = TOUCHES;
-    nes.loadROM(tempsEnSecondes(recolorer(rom, perso), rom.pal));
+    // start() ouvre la carte son ; la première image ne sera calculée qu'au prochain rafraîchissement, après chargerRom().
     navigateur.start();
-    // jsnes 2.1 fixe la fréquence du son (44,1 kHz) avant d'ouvrir la carte son : on la recale,
-    // sinon il manque du son en permanence et jsnes accélère le jeu pour combler.
-    const frequence = navigateur._speakers.audioCtx?.sampleRate;
-    if (frequence) {
-      nes.opts.sampleRate = nes.papu.sampleRate = frequence;
-      nes.papu.sampleTimerMax = Math.floor((1024 * 1789772.5) / frequence);
-    }
+    // jsnes 2.1 fixe la fréquence du son (44,1 kHz) avant d'ouvrir la carte son : on la recale avant de charger la ROM.
+    nes.opts.sampleRate = navigateur._speakers.audioCtx?.sampleRate ?? nes.opts.sampleRate;
+    chargerRom();
     const minuteur = navigateur._frameTimer;
-    if (rom.pal) {
-      passerEnPal(nes);
-      minuteur.interval = 1000 / 50.007;
-    }
+    if (rom.pal) minuteur.interval = 1000 / 50.007;
+    horloge = () => minuteur.lastFrameTime || performance.now();
     // Le minuteur de jsnes 2.1, une fois en avance (images ajoutées quand le son manque), calcule une image
     // à chaque rafraîchissement de l'écran : le jeu tournait à 144 images/s sur un écran 144 Hz.
     // Remplacé par une horloge qui ne calcule que les images dues.
@@ -317,23 +440,30 @@
     const sortieSon = nes.opts.onAudioSample;
     nes.opts.onAudioSample = (g, d) => sortieSon(g * volume, d * volume);
     $("plein-ecran").disabled = false;
-    const ram = nes.cpu.mem;
     const ctx = navigateur._screen.context;
     const calculerImage = minuteur.onGenerateFrame;
     const afficherImage = minuteur.onWriteFrame;
     let n = 0;
+    let lot = [];
+    const parMessage = Math.ceil(1000 / minuteur.interval / 8); // le relais n'accepte que 10 messages/s : on en vise 8 au plus
     minuteur.onGenerateFrame = () => {
       calculerImage();
       images++;
-      viesInfinies(ram);
-      if (++n % 2 === 0) reseau.envoyer({ perso, ...lireEtat(ram) });
+      suivreCourse();
+      const etat = lireEtat(ram);
+      etat.t = Math.round(++n * minuteur.interval); // horloge de jeu : régulière même quand les images sont calculées par paquets
+      lot.push(etat);
+      if (lot.length >= parMessage) {
+        reseau.envoyer({ perso, etats: lot, ...infosCourse() });
+        lot = [];
+      }
     };
     minuteur.onWriteFrame = () => {
       afficherImage();
-      dessinerPotes(ctx, ram);
+      dessinerPotes(ctx);
     };
     suivreManette();
-    window.nesDebug = { nes, ram, potes, navigateur }; // pour tester depuis la console
+    window.nesDebug = { nes, potes, navigateur, recevoirMessage, get ram() { return ram; }, get course() { return course; } }; // pour tester depuis la console
   });
 </script>
 </body>

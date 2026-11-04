@@ -2,6 +2,8 @@
 // Les jeux s'échangent leurs messages via un relais MQTT public : ça passe partout (4G, box…)
 // sans rien héberger, puisque ce sont les navigateurs qui vont vers le relais.
 // shortcut: un seul relais public gratuit sans garantie ; s'il tombe, en mettre un autre ici (les deux joueurs doivent être sur le même)
+// Mesuré le 2026-11-04 : il ne laisse passer que 10 messages/s par joueur (le reste est jeté sans prévenir),
+// donc les jeux regroupent leurs données pour rester vers 7 messages/s.
 const RELAIS = "wss://broker.emqx.io:8084/mqtt";
 
 function lire(cle, defaut) {
@@ -50,7 +52,7 @@ export function rejoindre(jeu, recevoir) {
   const moi = Math.random().toString(36).slice(2, 10);
   const sujet = `salle-de-jeux/${salonActuel}/${jeu}`;
   const client = mqtt.connect(RELAIS, { reconnectPeriod: 2000 });
-  client.on("connect", () => client.subscribe(sujet));
+  client.on("connect", () => client.subscribe(sujet, { qos: 1 }));
   client.on("message", (_, donnees) => {
     let m;
     try {
@@ -61,8 +63,9 @@ export function rejoindre(jeu, recevoir) {
     if (m && typeof m === "object" && typeof m.id === "string" && m.id !== moi) recevoir(m);
   });
   return {
-    envoyer(m) {
-      if (client.connected) client.publish(sujet, JSON.stringify({ ...m, id: moi, pseudo: pseudoActuel }));
+    // fiable : le relais accuse réception et le message est renvoyé si besoin (pour les messages rares et importants)
+    envoyer(m, fiable = false) {
+      if (client.connected) client.publish(sujet, JSON.stringify({ ...m, id: moi, pseudo: pseudoActuel }), { qos: fiable ? 1 : 0 });
     },
     connecte: () => client.connected,
   };
